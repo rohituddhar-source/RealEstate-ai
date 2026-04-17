@@ -1,6 +1,7 @@
 # email_otp.py
 import random
 import smtplib
+import streamlit as st
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import sqlite3
