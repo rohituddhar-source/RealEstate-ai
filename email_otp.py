@@ -10,8 +10,8 @@ import traceback
 
 # ==================== YOUR GMAIL SETTINGS ====================
 # ⚠️ IMPORTANT: Change these to YOUR Gmail and App Password
-YOUR_GMAIL = "rohituddhar@gmail.com"  # <---- CHANGE THIS
-YOUR_APP_PASSWORD = "fpwe muze zknv iaen"  # <---- CHANGE THIS (16 characters with spaces)
+YOUR_GMAIL = "your_email@gmail.com"  # <---- CHANGE THIS
+YOUR_APP_PASSWORD = "abcd efgh ijkl mnop"  # <---- CHANGE THIS (16 characters with spaces)
 # =============================================================
 
 def hash_password(password):
