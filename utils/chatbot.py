@@ -43,6 +43,29 @@ def fuzzy_match_city(user_input, cities_list):
     
     return None
 
+def extract_all_cities(query, cities_list):
+    """Extract ALL cities mentioned in the query"""
+    query_lower = query.lower()
+    found_cities = []
+    
+    for city in cities_list:
+        if city.lower() in query_lower:
+            found_cities.append(city)
+    
+    # Also check aliases
+    for alias, correct in {
+        'bangalore': 'Bangalore', 'bengaluru': 'Bangalore', 'banglore': 'Bangalore',
+        'mumbai': 'Mumbai', 'bombay': 'Mumbai', 'mumbi': 'Mumbai',
+        'delhi': 'Delhi', 'new delhi': 'Delhi', 'dilli': 'Delhi',
+        'chennai': 'Chennai', 'madras': 'Chennai', 'chenai': 'Chennai',
+        'pune': 'Pune', 'poona': 'Pune',
+        'nagpur': 'Nagpur', 'nagppur': 'Nagpur'
+    }.items():
+        if alias in query_lower and correct not in found_cities:
+            found_cities.append(correct)
+    
+    return list(set(found_cities))
+
 def smart_city_detection(query, df):
     """Extract city even from complex sentences"""
     cities = df['city'].unique()
@@ -104,7 +127,6 @@ def create_rent_meter(city, avg_rent, min_rent, max_rent, avg_area, avg_beds, pr
     else:
         position = 50
     
-    # Truncate position to 2 decimal places for cleaner display
     position = round(position, 1)
     
     return f"""
@@ -126,45 +148,6 @@ def create_rent_meter(city, avg_rent, min_rent, max_rent, avg_area, avg_beds, pr
         <div style="display: flex; gap: 15px; margin-top: 8px; font-size: 11px; color: #94a3b8;">
             <span>📐 {avg_area:.0f} sqft avg</span>
             <span>🛏️ {avg_beds:.1f} beds avg</span>
-        </div>
-    </div>
-    """
-
-def create_comparison_chart(city1, city2, rent1, rent2, price_level1, price_level2):
-    """Create simple comparison bar chart as HTML"""
-    max_rent = max(rent1, rent2)
-    width1 = (rent1 / max_rent) * 100 if max_rent > 0 else 50
-    width2 = (rent2 / max_rent) * 100 if max_rent > 0 else 50
-    
-    width1 = round(width1, 1)
-    width2 = round(width2, 1)
-    
-    return f"""
-    <div style="background: #1e293b; border-radius: 12px; padding: 15px; margin: 10px 0;">
-        <div style="margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span style="font-size: 13px; font-weight: bold; color: white;">{city1}</span>
-                <span style="font-size: 13px; color: #4f8df5;">₹{rent1:,.0f}</span>
-            </div>
-            <div style="background: #334155; border-radius: 8px; height: 24px; overflow: hidden;">
-                <div style="width: {width1}%; background: linear-gradient(90deg, #4f8df5, #6c5ce7); height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: white; font-size: 11px; font-weight: bold;">
-                    {price_level1}
-                </div>
-            </div>
-        </div>
-        <div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span style="font-size: 13px; font-weight: bold; color: white;">{city2}</span>
-                <span style="font-size: 13px; color: #a78bfa;">₹{rent2:,.0f}</span>
-            </div>
-            <div style="background: #334155; border-radius: 8px; height: 24px; overflow: hidden;">
-                <div style="width: {width2}%; background: linear-gradient(90deg, #a78bfa, #c084fc); height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: white; font-size: 11px; font-weight: bold;">
-                    {price_level2}
-                </div>
-            </div>
-        </div>
-        <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #334155; text-align: center;">
-            <span style="font-size: 12px; color: #10b981;">💡 Save ₹{abs(rent1 - rent2):,.0f}/month by choosing the cheaper option!</span>
         </div>
     </div>
     """
@@ -211,7 +194,7 @@ def get_overall_market_outlook(df):
 💡 Save {((expensive_price - cheapest_price)/expensive_price*100):.0f}% by choosing {cheapest}!"""
 
 def get_city_investment_analysis(df, city):
-    """Get investment analysis for a specific city"""
+    """Get investment analysis for a specific city (text only)"""
     city_data = get_city_data(df, city)
     if not city_data:
         return None
@@ -221,54 +204,34 @@ def get_city_investment_analysis(df, city):
     gross_yield = (avg_rent * 12 / estimated_price) * 100
     
     if gross_yield > 7:
-        score = "High"
         recommendation = "✅ GOOD INVESTMENT"
-        risk = "Low"
     elif gross_yield > 5:
-        score = "Medium"
-        recommendation = "📊 MODERATE"
-        risk = "Medium"
+        recommendation = "📊 MODERATE INVESTMENT"
     else:
-        score = "Low"
-        recommendation = "⚠️ CAUTION"
-        risk = "High"
+        recommendation = "⚠️ CAUTION - Low Returns"
     
     return f"""💰 **Investment in {city}:**
 
-📊 **Yield:** {gross_yield:.1f}%
-📈 **Score:** {score} | **Risk:** {risk}
-🎯 **Verdict:** {recommendation}"""
+📊 **Average Rent:** ₹{avg_rent:,.0f}/month
+💰 **Est. Property Price:** ₹{estimated_price:,.0f}
+📈 **Gross Rental Yield:** {gross_yield:.1f}%
 
-def get_city_comparison(df, city1, city2):
-    """Get detailed comparison between two cities with visual chart"""
-    data1 = get_city_data(df, city1)
-    data2 = get_city_data(df, city2)
-    
-    if not data1 or not data2:
-        return None
-    
-    rent1 = data1['avg_rent']
-    rent2 = data2['avg_rent']
+🎯 **Verdict:** {recommendation}
+
+💡 Use the **'Investment'** tab for detailed EMI calculations!"""
+
+def get_city_comparison_text(city1, city2, rent1, rent2):
+    """Get text-only comparison between two cities"""
     diff = abs(rent1 - rent2)
     cheaper = city1 if rent1 < rent2 else city2
     pct_diff = (diff / max(rent1, rent2)) * 100
     
-    # Get all rents for price level calculation
-    all_rents = df['rent']
-    price_level1, _, _ = get_price_level(rent1, all_rents)
-    price_level2, _, _ = get_price_level(rent2, all_rents)
-    
-    # Create visual comparison chart
-    comparison_chart = create_comparison_chart(city1, city2, rent1, rent2, price_level1, price_level2)
-    
     return f"""⚖️ **{city1} vs {city2} Comparison:**
 
-{comparison_chart}
-
-📊 **Quick Facts:**
-• {cheaper} is **{pct_diff:.0f}% cheaper**
-• Save ₹{diff:,.0f} every month by choosing {cheaper}
-• That's ₹{diff * 12:,.0f} savings per year!
+📊 **Rent Comparison:**
+• {city1}: ₹{rent1:,.0f}/month
+• {city2}: ₹{rent2:,.0f}/month
+• {cheaper} is **{pct_diff:.0f}% cheaper** (save ₹{diff:,.0f}/month)
 
 💡 **Verdict:** {cheaper} is better for your wallet!"""
 
@@ -305,16 +268,6 @@ def get_personalized_recommendations(df):
             return f"🎯 You might like {', '.join(affordable_cities[:2])} - fits your budget"
     return None
 
-def get_last_mentioned_city():
-    """Get the last city mentioned in conversation from assistant responses"""
-    for msg in reversed(st.session_state.chat_messages):
-        if msg["role"] == "assistant":
-            cities = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Pune', 'Hyderabad', 'Nagpur', 'Kolkata']
-            for city in cities:
-                if city in msg["content"]:
-                    return city
-    return None
-
 def generate_available_cities_list(df, exclude_city=None):
     """Generate a formatted list of available cities for comparison"""
     cities = df['city'].unique().tolist()
@@ -327,80 +280,197 @@ def generate_available_cities_list(df, exclude_city=None):
         return ", ".join(cities[:4]) + f" and {len(cities)-4} more"
 
 
-def generate_response(message, df):
-    """Enhanced response with simple visualizations - returns tuple (text, html_content)"""
+def generate_response(message, df, conversation_stage):
+    """Enhanced response with natural conversation flow"""
     sentiment, prefix = analyze_sentiment(message)
     msg = message.lower().strip()
     cities_list = df['city'].unique().tolist()
     all_rents = df['rent']
     
-    # ========== CHECK FOR COMPARISON REQUEST ==========
-    if st.session_state.get("awaiting_comparison_city", False) and msg not in ['yes', 'yeah', 'sure', 'no', 'nope']:
-        comparison_city = smart_city_detection(message, df)
-        if comparison_city:
-            last_city = st.session_state.get("last_rent_city", None)
-            if last_city and comparison_city != last_city:
-                result = get_city_comparison(df, last_city, comparison_city)
-            else:
-                other_city = None
-                for city in cities_list:
-                    if city != comparison_city:
-                        other_city = city
-                        break
-                if other_city:
-                    result = get_city_comparison(df, comparison_city, other_city)
-                else:
-                    result = "I need two different cities to compare."
-            
-            st.session_state.awaiting_comparison_city = False
-            st.session_state.last_response = result
-            return result, None
-        else:
-            available_cities = generate_available_cities_list(df, st.session_state.get("last_rent_city", None))
-            result = f"I couldn't recognize that city name. Here are the cities I have data for: {available_cities}\n\nPlease tell me which city you'd like to compare with {st.session_state.get('last_rent_city', 'Pune')}."
-            st.session_state.last_response = result
-            return result, None
-    
-    # ========== HANDLE SIMPLE RESPONSES ==========
-    if msg in ['yes', 'yeah', 'sure', 'yep']:
-        if st.session_state.get("awaiting_comparison_city", False):
+    # ========== STAGE 1: JUST SHOWED RENT, ASKING FOR COMPARISON ==========
+    if conversation_stage == "awaiting_comparison_decision":
+        if msg in ['yes', 'yeah', 'sure', 'yep', 'ok', 'okay']:
+            # User wants to compare
             last_city = st.session_state.get("last_rent_city", None)
             if last_city:
                 available_cities = generate_available_cities_list(df, last_city)
                 result = f"Great! Which city would you like to compare with **{last_city}**? I have data for: {available_cities}\n\nJust type the city name."
-                st.session_state.awaiting_comparison_city = True
+                st.session_state.conversation_stage = "awaiting_comparison_city"
                 st.session_state.last_response = result
+                st.session_state.last_query = message
                 return result, None
-            else:
-                result = "Which city would you like to compare? Try: Compare Mumbai and Pune"
+        elif msg in ['no', 'nope', 'nah', 'not']:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city:
+                result = f"Okay! Would you like to know about investment opportunities in **{last_city}**? (Say 'yes' or 'no')"
+                st.session_state.conversation_stage = "awaiting_investment_decision"
                 st.session_state.last_response = result
+                st.session_state.last_query = message
                 return result, None
         else:
-            result = "What would you like to know? Try asking about rent, investment, or market outlook in any city."
+            comparison_city = smart_city_detection(message, df)
+            if comparison_city:
+                last_city = st.session_state.get("last_rent_city", None)
+                if last_city and comparison_city != last_city:
+                    data1 = get_city_data(df, last_city)
+                    data2 = get_city_data(df, comparison_city)
+                    if data1 and data2:
+                        rent1 = data1['avg_rent']
+                        rent2 = data2['avg_rent']
+                        result = get_city_comparison_text(last_city, comparison_city, rent1, rent2)
+                        st.session_state.conversation_stage = "awaiting_further_action"
+                        st.session_state.last_response = result
+                        st.session_state.last_query = message
+                        return result, None
+            last_city = st.session_state.get("last_rent_city", "Pune")
+            result = f"I didn't understand. Would you like to compare **{last_city}** with another city? (Say 'yes' or 'no')"
+            st.session_state.conversation_stage = "awaiting_comparison_decision"
             st.session_state.last_response = result
+            st.session_state.last_query = message
             return result, None
     
-    if msg in ['no', 'nope', 'nah', 'not']:
-        if st.session_state.get("awaiting_comparison_city", False):
-            st.session_state.awaiting_comparison_city = False
-            result = "No problem! Let me know if you need help with anything else."
+    # ========== STAGE 2: WAITING FOR COMPARISON CITY NAME ==========
+    if conversation_stage == "awaiting_comparison_city":
+        comparison_city = smart_city_detection(message, df)
+        if comparison_city:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city and comparison_city != last_city:
+                data1 = get_city_data(df, last_city)
+                data2 = get_city_data(df, comparison_city)
+                if data1 and data2:
+                    rent1 = data1['avg_rent']
+                    rent2 = data2['avg_rent']
+                    result = get_city_comparison_text(last_city, comparison_city, rent1, rent2)
+                    st.session_state.conversation_stage = "awaiting_further_action"
+                    st.session_state.last_response = result
+                    st.session_state.last_query = message
+                    return result, None
+        result = f"I couldn't recognize that city. Please try another city name, or say 'no' to stop."
+        st.session_state.last_response = result
+        st.session_state.last_query = message
+        return result, None
+    
+    # ========== STAGE 3: AFTER COMPARISON, ASK FOR UPGRADE INFO ==========
+    if conversation_stage == "awaiting_further_action":
+        if msg in ['yes', 'yeah', 'sure', 'yep']:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city:
+                result = f"Great! Do you have any specific upgrade in mind for **{last_city}**? For example:\n• Adding a bedroom\n• Adding a bathroom\n• Fully furnished\n• Premium location\n\nJust tell me what you're planning!"
+                st.session_state.conversation_stage = "awaiting_upgrade_info"
+                st.session_state.last_response = result
+                st.session_state.last_query = message
+                return result, None
+        elif msg in ['no', 'nope', 'nah', 'not']:
+            result = "No problem! Let me know if you need help with anything else about real estate."
+            st.session_state.conversation_stage = "normal"
             st.session_state.last_response = result
+            st.session_state.last_query = message
             return result, None
         else:
-            result = "Okay! Feel free to ask me about rent prices, investment, or market outlook in any city."
+            result = "Would you like to know about property upgrades? (Say 'yes' or 'no')"
             st.session_state.last_response = result
+            st.session_state.last_query = message
             return result, None
     
-    # ========== RENT PRICE WITH VISUAL METER ==========
-    if any(word in msg for word in ['rent', 'price', 'cost']):
+    # ========== STAGE 4: UPGRADE INFORMATION ==========
+    if conversation_stage == "awaiting_upgrade_info":
+        last_city = st.session_state.get("last_rent_city", None)
+        if 'bedroom' in msg:
+            result = f"🧮 **Adding a bedroom in {last_city}:**\n\n• Cost: ₹5,00,000\n• Rent increase: +10-15%\n• Payback period: 8-10 years\n\n💡 Would you like to know about other upgrades? (Say 'yes' or 'no')"
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        elif 'bathroom' in msg:
+            result = f"🧮 **Adding a bathroom in {last_city}:**\n\n• Cost: ₹3,00,000\n• Rent increase: +5-8%\n• Payback period: 10-12 years\n\n💡 Would you like to know about other upgrades? (Say 'yes' or 'no')"
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        elif 'furnished' in msg or 'furnish' in msg:
+            result = f"🧮 **Fully furnished in {last_city}:**\n\n• Cost: ₹2,50,000\n• Rent increase: +15-20%\n• Payback period: 3-4 years\n\n💡 This is the best ROI! Would you like to know about other upgrades? (Say 'yes' or 'no')"
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        elif 'location' in msg or 'premium' in msg:
+            result = f"⭐ **Premium location in {last_city}:**\n\n• Rent increase: +18-25%\n• Payback period: Immediate\n\n💡 Location is the most important factor! Would you like to know about other upgrades? (Say 'yes' or 'no')"
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        else:
+            result = f"I can help with upgrade information for {last_city}. Try asking about:\n• Adding a bedroom\n• Adding a bathroom\n• Fully furnished\n• Premium location"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+    
+    # ========== STAGE 5: AFTER INVESTMENT DECISION ==========
+    if conversation_stage == "awaiting_investment_decision":
+        if msg in ['yes', 'yeah', 'sure', 'yep']:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city:
+                result = get_city_investment_analysis(df, last_city)
+                st.session_state.conversation_stage = "awaiting_further_action"
+                st.session_state.last_response = result
+                st.session_state.last_query = message
+                return result, None
+        elif msg in ['no', 'nope', 'nah', 'not']:
+            result = "Okay! Is there anything else I can help you with regarding real estate?"
+            st.session_state.conversation_stage = "normal"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        else:
+            last_city = st.session_state.get("last_rent_city", "Pune")
+            result = f"Would you like to know about investment opportunities in **{last_city}**? (Say 'yes' or 'no')"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+    
+    # ========== EXTRACT ALL CITIES FROM QUERY ==========
+    mentioned_cities = extract_all_cities(msg, cities_list)
+    
+    # ========== CHECK FOR COMPARISON (2+ cities mentioned) ==========
+    if len(mentioned_cities) >= 2:
+        city1, city2 = mentioned_cities[0], mentioned_cities[1]
+        data1 = get_city_data(df, city1)
+        data2 = get_city_data(df, city2)
+        if data1 and data2:
+            rent1 = data1['avg_rent']
+            rent2 = data2['avg_rent']
+            result = get_city_comparison_text(city1, city2, rent1, rent2)
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+    
+    # ========== INVESTMENT ANALYSIS ==========
+    if any(word in msg for word in ['invest', 'investment']):
+        for city in cities_list:
+            if city.lower() in msg:
+                result = get_city_investment_analysis(df, city)
+                st.session_state.conversation_stage = "awaiting_further_action"
+                st.session_state.last_response = result
+                st.session_state.last_query = message
+                return result, None
+        city = smart_city_detection(message, df)
+        if city:
+            result = get_city_investment_analysis(df, city)
+            st.session_state.conversation_stage = "awaiting_further_action"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+    
+    # ========== RENT PRICE WITH METER AND ASK FOR COMPARISON ==========
+    if any(word in msg for word in ['rent', 'price']):
         city = smart_city_detection(message, df)
         if city:
             data = get_city_data(df, city)
             if data:
                 st.session_state.last_rent_city = city
-                st.session_state.awaiting_comparison_city = True
+                st.session_state.conversation_stage = "awaiting_comparison_decision"
                 
-                # Create visual rent meter
                 price_level, level_name, price_color = get_price_level(data['avg_rent'], all_rents)
                 rent_meter = create_rent_meter(
                     city, 
@@ -413,168 +483,131 @@ def generate_response(message, df):
                     price_color
                 )
                 
-                text_result = f"""📊 **{city} Rent Summary:**
-
-💡 **Would you like to compare {city} with another city?** (Say 'yes' to compare or type a city name)
-
-📌 **Price Level:** {level_name} ({price_level})"""
+                # The question text that will appear AFTER the rent meter
+                follow_up_text = f"\n\n💡 **Would you like to compare {city} with another city?**\n*(Say 'yes' to compare or 'no' to see investment options)*"
                 
-                st.session_state.last_response = text_result
-                return text_result, rent_meter
-    
-    # ========== REGULAR INTENT DETECTION ==========
-    
-    # Market outlook
-    if any(word in msg for word in ['outlook', 'market trend', 'market outlook']):
-        for city in cities_list:
-            if city.lower() in msg:
-                result = get_city_market_outlook(df, city)
-                if result:
-                    st.session_state.last_response = result
-                    return result, None
-        city = smart_city_detection(message, df)
-        if city:
-            result = get_city_market_outlook(df, city)
-            if result:
-                st.session_state.last_response = result
-                return result, None
-        result = get_overall_market_outlook(df)
+                # Combine rent meter AND the follow-up question
+                combined_response = rent_meter + follow_up_text
+                
+                st.session_state.last_response = combined_response
+                st.session_state.last_query = message
+                return combined_response, None
+        result = f"Which city's rent would you like to see? Try 'Rent in Mumbai' or 'Rent in Pune'"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
-    # Investment
-    if any(word in msg for word in ['invest', 'roi', 'yield', 'should i buy']):
-        for city in cities_list:
-            if city.lower() in msg:
-                result = get_city_investment_analysis(df, city)
-                if result:
-                    st.session_state.last_response = result
-                    return result + "\n\n💡 Use the **Investment** tab for detailed EMI calculations!", None
-        city = smart_city_detection(message, df)
-        if city:
-            result = get_city_investment_analysis(df, city)
-            if result:
-                st.session_state.last_response = result
-                return result + "\n\n💡 Use the **Investment** tab for detailed EMI calculations!", None
-        result = get_overall_market_outlook(df)
-        st.session_state.last_response = result
-        return result, None
-    
-    # Direct comparison
-    if any(word in msg for word in ['compare', 'vs', 'versus']):
-        mentioned = [c for c in cities_list if c.lower() in msg]
-        if len(mentioned) >= 2:
-            result = get_city_comparison(df, mentioned[0], mentioned[1])
-            if result:
-                st.session_state.awaiting_comparison_city = False
-                st.session_state.last_response = result
-                return result, None
-        elif len(mentioned) == 1:
-            available_cities = generate_available_cities_list(df, mentioned[0])
-            result = f"Which city would you like to compare with **{mentioned[0]}**? I have data for: {available_cities}"
-            st.session_state.awaiting_comparison_city = True
-            st.session_state.last_rent_city = mentioned[0]
-            st.session_state.last_response = result
-            return result, None
-        
-        result = "To compare cities, try: 'Compare Mumbai and Pune' or 'Compare Bangalore vs Chennai'"
-        st.session_state.last_response = result
-        return result, None
-    
-    # Best deal
+    # ========== BEST DEAL ==========
     if any(word in msg for word in ['best', 'cheapest', 'deal']):
         city_avg = df.groupby('city')['rent'].mean().sort_values()
         cheapest = city_avg.index[0]
         cheapest_price = city_avg.iloc[0]
         
-        result = f"🏙️ **Best Deal:** 🥇 **{cheapest}** is the most affordable city at **₹{cheapest_price:,.0f}/month**!\n\n💡 Looking for budget-friendly options? {cheapest} is your best bet!"
+        st.session_state.last_rent_city = cheapest
+        st.session_state.conversation_stage = "awaiting_investment_decision"
+        
+        result = f"🏙️ **Best Deal:** 🥇 **{cheapest}** is the most affordable city at **₹{cheapest_price:,.0f}/month**!\n\n💡 Would you like to see investment opportunities in **{cheapest}**? (Say 'yes' or 'no')"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
-    # Negotiation
+    # ========== MARKET OUTLOOK ==========
+    if any(word in msg for word in ['outlook', 'market']):
+        for city in cities_list:
+            if city.lower() in msg:
+                result = get_city_market_outlook(df, city)
+                st.session_state.conversation_stage = "normal"
+                st.session_state.last_response = result
+                st.session_state.last_query = message
+                return result, None
+        city = smart_city_detection(message, df)
+        if city:
+            result = get_city_market_outlook(df, city)
+            st.session_state.conversation_stage = "normal"
+            st.session_state.last_response = result
+            st.session_state.last_query = message
+            return result, None
+        result = get_overall_market_outlook(df)
+        st.session_state.conversation_stage = "normal"
+        st.session_state.last_response = result
+        st.session_state.last_query = message
+        return result, None
+    
+    # ========== NEGOTIATION ==========
     if any(word in msg for word in ['negotiate', 'offer']):
         result = f"""🤝 **Negotiation Tips:**
 
 {get_seasonal_insight()}
-• Start 8-12% below market
+• Start 8-12% below market rate
 • Mention how long property has been listed
 • Ask for small repairs or free parking"""
+        st.session_state.conversation_stage = "normal"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
-    # What-if
-    if any(word in msg for word in ['what if', 'upgrade']):
-        result = """🧮 **Upgrade ROI:**
-
-| Upgrade | Cost | Rent Increase | Payback |
-|---------|------|---------------|---------|
-| +1 Bedroom | ₹5L | +10-15% | 8-10 years |
-| +1 Bathroom | ₹3L | +5-8% | 10-12 years |
-| Fully Furnished | ₹2.5L | +15-20% | 3-4 years |
-
-💡 Best ROI: Furnishing pays back fastest!"""
-        st.session_state.last_response = result
-        return result, None
-    
-    # Profile stats
+    # ========== MY STATS ==========
     if 'my stats' in msg:
         result = get_user_personalization()
+        st.session_state.conversation_stage = "normal"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
-    # Greeting
+    # ========== HELP ==========
+    if msg == 'help':
+        result = """💡 **Available Commands:**
+• "Rent in Mumbai" - See rent with visual meter
+• "Compare Mumbai and Pune" - Compare two cities
+• "Investment in Pune" - Investment analysis
+• "Best deal" - Find cheapest city
+• "Market outlook" - Current trends
+• "Negotiation tips" - How to negotiate"""
+        st.session_state.conversation_stage = "normal"
+        st.session_state.last_response = result
+        st.session_state.last_query = message
+        return result, None
+    
+    # ========== GREETING ==========
     if any(x in msg for x in ['hi', 'hello', 'hey']):
         rec = get_personalized_recommendations(df)
         rec_text = f"\n\n{rec}" if rec else ""
-        result = f"""👋 **Hello! I'm your AI Real Estate Expert.**
+        result = f"""👋 **Hello! I'm your AI Real Estate Assistant.**
 
 {get_user_personalization()}{rec_text}
 
-📊 **Try these simple commands:**
-• **"Rent in Mumbai"** - See rent with easy-to-read meter
-• **"Compare Mumbai and Pune"** - Visual comparison chart
-• **"Best deal"** - Find most affordable city
-• **"Should I invest?"** - Quick investment advice
-
-🏙️ **Cities:** {', '.join(cities_list[:4])}...
-
-What would you like to know?"""
+Try asking: "Rent in Mumbai", "Compare Mumbai and Pune", or "Investment in Pune"
+Type 'help' for all commands"""
+        st.session_state.conversation_stage = "normal"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
     if 'thank' in msg:
-        result = "You're welcome! 😊 Happy to help with your real estate decisions!"
+        result = "You're welcome! 😊 Happy to help!"
+        st.session_state.conversation_stage = "normal"
         st.session_state.last_response = result
+        st.session_state.last_query = message
         return result, None
     
-    if 'help' in msg:
-        result = """💡 **Simple commands to try:**
+    # ========== DEFAULT RESPONSE ==========
+    result = f"""💡 Try asking:
+• "Rent in Mumbai"
+• "Compare Mumbai and Pune"
+• "Investment in Pune"
+• "Best deal"
 
-• "Rent in Mumbai" - See rent with visual meter
-• "Compare Mumbai and Pune" - Side-by-side comparison
-• "Best deal" - Most affordable city
-• "Should I invest in Bangalore?" - Investment advice
-• "Market outlook" - Current trends"""
-        st.session_state.last_response = result
-        return result, None
-    
-    # Default response
-    result = f"""💡 **Try these simple commands:**
-
-• "Rent in Mumbai" - See rent with easy meter
-• "Compare Mumbai and Pune" - Visual comparison
-• "Best deal" - Find cheapest city
-• "Should I invest in Bangalore?" - Investment advice
-
-🏙️ **Cities:** {', '.join(cities_list[:5])}..."""
+Type 'help' for all commands"""
+    st.session_state.conversation_stage = "normal"
     st.session_state.last_response = result
+    st.session_state.last_query = message
     return result, None
 
 
 def analyze_sentiment(text):
     """Simple sentiment analysis"""
     positive_words = ['good', 'great', 'excellent', 'awesome', 'love', 'perfect', 'thanks', 'thank']
-    negative_words = ['bad', 'poor', 'expensive', 'worried', 'concerned', 'sad', 'terrible']
+    negative_words = ['bad', 'poor', 'expensive', 'worried', 'concerned']
     
     text_lower = text.lower()
     pos_count = sum(1 for w in positive_words if w in text_lower)
@@ -605,48 +638,53 @@ def export_chat_history():
 
 
 def floating_chatbot(df):
-    """Minimal professional floating chatbot with simple visuals"""
+    """Natural conversational floating chatbot"""
     
     # Initialize session state
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = [
-            {"role": "assistant", "content": "👋 Hi! Ask me about rent, investment, or best deals!"}
+            {"role": "assistant", "content": "👋 Hi! I'm your AI Real Estate Assistant. Ask me about rent, investment, or best deals!"}
         ]
     
     if "last_response" not in st.session_state:
         st.session_state.last_response = ""
     
+    if "last_query" not in st.session_state:
+        st.session_state.last_query = ""
+    
     if "last_rent_city" not in st.session_state:
         st.session_state.last_rent_city = None
     
-    if "awaiting_comparison_city" not in st.session_state:
-        st.session_state.awaiting_comparison_city = False
+    if "conversation_stage" not in st.session_state:
+        st.session_state.conversation_stage = "normal"
     
-    # Minimal CSS
+    # CSS for floating button
     st.markdown("""
     <style>
-    button[aria-label="Open popover"] {
+    .floating-btn-container {
         position: fixed;
         bottom: 20px;
         right: 20px;
-        background: linear-gradient(135deg, #4f8df5, #6c5ce7) !important;
-        border-radius: 50% !important;
-        width: 50px !important;
-        height: 50px !important;
         z-index: 999;
+    }
+    
+    .floating-chat-btn {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #4f8df5, #6c5ce7);
+        border-radius: 50%;
+        border: none;
         box-shadow: 0 2px 10px rgba(79,141,245,0.3);
-        border: none !important;
-        padding: 0 !important;
-    }
-    
-    button[aria-label="Open popover"]::after {
-        content: "🤖";
+        cursor: pointer;
+        transition: transform 0.2s;
         font-size: 24px;
-        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     
-    button[aria-label="Open popover"] > div {
-        display: none !important;
+    .floating-chat-btn:hover {
+        transform: scale(1.05);
     }
     
     div[role="dialog"] {
@@ -676,14 +714,24 @@ def floating_chatbot(df):
         padding: 4px 8px !important;
     }
     </style>
+    
+    <div class="floating-btn-container">
+        <button class="floating-chat-btn" id="floatingChatBtn">🤖</button>
+    </div>
+    
+    <script>
+    document.getElementById('floatingChatBtn').onclick = function() {
+        var btn = document.querySelector('button[aria-label="Open popover"]');
+        if (btn) btn.click();
+    };
+    </script>
     """, unsafe_allow_html=True)
     
     with st.popover("", use_container_width=False):
-        # Simple header
         st.markdown("""
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
             <span style="font-size: 20px;">🤖</span>
-            <span style="font-weight: 600; color: white; font-size: 13px;">AI Assistant</span>
+            <span style="font-weight: 600; color: white; font-size: 13px;">Assistant</span>
         </div>
         """, unsafe_allow_html=True)
         
@@ -692,69 +740,20 @@ def floating_chatbot(df):
         with chat_container:
             for msg in st.session_state.chat_messages:
                 with st.chat_message(msg["role"]):
-                    # Check if the message contains HTML content
-                    if msg["role"] == "assistant" and isinstance(msg.get("content"), dict) and msg["content"].get("html"):
-                        st.markdown(msg["content"]["text"])
-                        st.markdown(msg["content"]["html"], unsafe_allow_html=True)
-                    elif msg["role"] == "assistant" and isinstance(msg.get("content"), str):
-                        # Check if it's a rent meter response (contains HTML)
-                        if "<div style" in msg["content"]:
-                            st.markdown(msg["content"], unsafe_allow_html=True)
-                        else:
-                            st.markdown(msg["content"])
+                    if msg["role"] == "assistant" and isinstance(msg.get("content"), str) and "<div style" in msg["content"]:
+                        # This is HTML content like rent meter
+                        st.markdown(msg["content"], unsafe_allow_html=True)
                     else:
                         st.markdown(msg["content"])
         
-        # Quick reply buttons
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            if st.button("🏙️", key="qr_best", help="Best deal", use_container_width=True):
-                query = "Best deal"
-                st.session_state.chat_messages.append({"role": "user", "content": query})
-                response_text, response_html = generate_response(query, df)
-                if response_html:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_html})
-                else:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
-                st.rerun()
-        with col2:
-            if st.button("💰", key="qr_invest", help="Investment", use_container_width=True):
-                query = "Should I invest in property?"
-                st.session_state.chat_messages.append({"role": "user", "content": query})
-                response_text, response_html = generate_response(query, df)
-                if response_html:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_html})
-                else:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
-                st.rerun()
-        with col3:
-            if st.button("⚖️", key="qr_compare", help="Compare", use_container_width=True):
-                query = "Compare Mumbai and Pune"
-                st.session_state.chat_messages.append({"role": "user", "content": query})
-                response_text, response_html = generate_response(query, df)
-                if response_html:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_html})
-                else:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
-                st.rerun()
-        with col4:
-            if st.button("📊", key="qr_rent", help="Rent Meter", use_container_width=True):
-                query = "Rent in Mumbai"
-                st.session_state.chat_messages.append({"role": "user", "content": query})
-                response_text, response_html = generate_response(query, df)
-                if response_html:
-                    # Store as dict with both text and HTML
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_html})
-                else:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
-                st.rerun()
-        
         # Chat input
-        if prompt := st.chat_input("Ask...", key="chat_input_field"):
+        if prompt := st.chat_input("Ask about real estate...", key="chat_input_field"):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            response_text, response_html = generate_response(prompt, df)
-            if response_html:
-                st.session_state.chat_messages.append({"role": "assistant", "content": response_html})
+            response_text = generate_response(prompt, df, st.session_state.conversation_stage)
+            # response_text can be a tuple, but we're handling it correctly in generate_response
+            if isinstance(response_text, tuple):
+                # This shouldn't happen with the updated generate_response
+                st.session_state.chat_messages.append({"role": "assistant", "content": response_text[0]})
             else:
                 st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
             st.rerun()
@@ -762,13 +761,14 @@ def floating_chatbot(df):
         # Action buttons
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🗑️", key="clear_chat_btn", help="Clear chat", use_container_width=True):
+            if st.button("🗑️ Clear Chat", key="clear_chat_btn", use_container_width=True):
                 st.session_state.chat_messages = [
-                    {"role": "assistant", "content": "👋 Hi! Ask me about rent, investment, or best deals!"}
+                    {"role": "assistant", "content": "👋 Hi! I'm your AI Real Estate Assistant. Ask me about rent, investment, or best deals!"}
                 ]
                 st.session_state.last_response = ""
+                st.session_state.last_query = ""
                 st.session_state.last_rent_city = None
-                st.session_state.awaiting_comparison_city = False
+                st.session_state.conversation_stage = "normal"
                 st.rerun()
         with col2:
             export_chat_history()
