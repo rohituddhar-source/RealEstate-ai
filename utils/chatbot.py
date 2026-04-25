@@ -280,33 +280,71 @@ def generate_available_cities_list(df, exclude_city=None):
         return ", ".join(cities[:4]) + f" and {len(cities)-4} more"
 
 
-def generate_response(message, df, conversation_stage):
-    """Enhanced response with natural conversation flow"""
+def generate_follow_up(context, last_city, df):
+    """Generate contextual follow-up questions based on conversation history"""
+    follow_ups = []
+    
+    if context == "after_rent":
+        follow_ups = [
+            f"📊 Compare {last_city} with another city",
+            f"💰 Investment opportunities in {last_city}",
+            f"🏙️ Market outlook for {last_city}",
+            f"🛏️ What if I add a bedroom in {last_city}?"
+        ]
+    elif context == "after_comparison":
+        follow_ups = [
+            f"💰 Which city has better investment returns?",
+            f"🏙️ Market outlook for the cheaper city",
+            f"🛏️ Upgrade impact on rent",
+            f"📊 Compare with one more city"
+        ]
+    elif context == "after_investment":
+        follow_ups = [
+            f"🏙️ Best city for rental income",
+            f"📈 5-year wealth projection",
+            f"🏠 Should I buy or rent?",
+            f"📍 Which area has highest appreciation?"
+        ]
+    elif context == "after_upgrade":
+        follow_ups = [
+            f"💰 Compare returns with different upgrade",
+            f"🏙️ Best city for rental property",
+            f"📊 Market trends in {last_city}",
+            f"🤝 How to negotiate rent?"
+        ]
+    else:
+        follow_ups = [
+            f"📊 Check rent in {last_city}",
+            f"💰 Investment in {last_city}",
+            f"⚖️ Compare {last_city} with Mumbai",
+            f"🏆 Find best deal city"
+        ]
+    
+    return follow_ups[:3]
+
+
+def generate_response(message, df, conversation_stage, conversation_context):
+    """Enhanced response with continuous conversation flow"""
     sentiment, prefix = analyze_sentiment(message)
     msg = message.lower().strip()
     cities_list = df['city'].unique().tolist()
     all_rents = df['rent']
     
-    # ========== STAGE 1: JUST SHOWED RENT, ASKING FOR COMPARISON ==========
+    # ========== CONTINUOUS FOLLOW-UP BASED ON CONTEXT ==========
+    
+    # Stage 1: After showing rent, asking for comparison
     if conversation_stage == "awaiting_comparison_decision":
         if msg in ['yes', 'yeah', 'sure', 'yep', 'ok', 'okay']:
-            # User wants to compare
             last_city = st.session_state.get("last_rent_city", None)
             if last_city:
                 available_cities = generate_available_cities_list(df, last_city)
                 result = f"Great! Which city would you like to compare with **{last_city}**? I have data for: {available_cities}\n\nJust type the city name."
-                st.session_state.conversation_stage = "awaiting_comparison_city"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                return result, "awaiting_comparison_city", "after_rent"
         elif msg in ['no', 'nope', 'nah', 'not']:
             last_city = st.session_state.get("last_rent_city", None)
             if last_city:
                 result = f"Okay! Would you like to know about investment opportunities in **{last_city}**? (Say 'yes' or 'no')"
-                st.session_state.conversation_stage = "awaiting_investment_decision"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                return result, "awaiting_investment_decision", "after_rent"
         else:
             comparison_city = smart_city_detection(message, df)
             if comparison_city:
@@ -318,18 +356,14 @@ def generate_response(message, df, conversation_stage):
                         rent1 = data1['avg_rent']
                         rent2 = data2['avg_rent']
                         result = get_city_comparison_text(last_city, comparison_city, rent1, rent2)
-                        st.session_state.conversation_stage = "awaiting_further_action"
-                        st.session_state.last_response = result
-                        st.session_state.last_query = message
-                        return result, None
+                        # Ask follow-up after comparison
+                        follow_up = "\n\n💡 **What would you like to do next?**\n• Say 'yes' to explore upgrades\n• Say 'investment' for financial analysis\n• Or ask about another city"
+                        return result + follow_up, "awaiting_further_action", "after_comparison"
             last_city = st.session_state.get("last_rent_city", "Pune")
             result = f"I didn't understand. Would you like to compare **{last_city}** with another city? (Say 'yes' or 'no')"
-            st.session_state.conversation_stage = "awaiting_comparison_decision"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            return result, "awaiting_comparison_decision", conversation_context
     
-    # ========== STAGE 2: WAITING FOR COMPARISON CITY NAME ==========
+    # Stage 2: Waiting for comparison city name
     if conversation_stage == "awaiting_comparison_city":
         comparison_city = smart_city_detection(message, df)
         if comparison_city:
@@ -340,98 +374,95 @@ def generate_response(message, df, conversation_stage):
                 if data1 and data2:
                     rent1 = data1['avg_rent']
                     rent2 = data2['avg_rent']
-                    result = get_city_comparison_text(last_city, comparison_city, rent1, rent2)
-                    st.session_state.conversation_stage = "awaiting_further_action"
-                    st.session_state.last_response = result
-                    st.session_state.last_query = message
-                    return result, None
+                    result = get_city_comparison_text(last_city, comparison_city, rent1, rent2) + "\n\n💡 **Want to explore more?**\n• Say 'upgrade' to see renovation ROI\n• Say 'investment' for financial analysis\n• Or ask about another city"
+                    return result, "awaiting_further_action", "after_comparison"
         result = f"I couldn't recognize that city. Please try another city name, or say 'no' to stop."
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        return result, "awaiting_comparison_city", conversation_context
     
-    # ========== STAGE 3: AFTER COMPARISON, ASK FOR UPGRADE INFO ==========
+    # Stage 3: After comparison or investment, ask for next action
     if conversation_stage == "awaiting_further_action":
-        if msg in ['yes', 'yeah', 'sure', 'yep']:
+        if 'upgrade' in msg or 'bedroom' in msg or 'bathroom' in msg or 'furnish' in msg:
+            last_city = st.session_state.get("last_rent_city", None)
+            result = f"Great! Let me help with upgrades in **{last_city}**.\n\n**Upgrade ROI Calculator:**\n\n• 🛏️ Adding a bedroom: +10-15% rent (8-10 years payback)\n• 🚽 Adding a bathroom: +5-8% rent (10-12 years payback)\n• 🪑 Fully furnished: +15-20% rent (3-4 years payback)\n• ⭐ Premium location: +18-25% rent (immediate)\n\n💡 **What would you like to know next?**\n• Say 'compare' to compare with another city\n• Say 'investment' for financial analysis\n• Or ask about market trends"
+            return result, "awaiting_further_action", "after_upgrade"
+        
+        elif 'investment' in msg or 'roi' in msg or 'yield' in msg:
             last_city = st.session_state.get("last_rent_city", None)
             if last_city:
-                result = f"Great! Do you have any specific upgrade in mind for **{last_city}**? For example:\n• Adding a bedroom\n• Adding a bathroom\n• Fully furnished\n• Premium location\n\nJust tell me what you're planning!"
-                st.session_state.conversation_stage = "awaiting_upgrade_info"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                result = get_city_investment_analysis(df, last_city) + "\n\n💡 **Explore more:**\n• Say 'upgrade' to see renovation ROI\n• Say 'market' for current trends\n• Or ask 'best deal' for affordable cities"
+                return result, "awaiting_further_action", "after_investment"
+        
+        elif 'market' in msg or 'trend' in msg or 'outlook' in msg:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city:
+                result = get_city_market_outlook(df, last_city) + "\n\n💡 **Want to continue?**\n• Say 'investment' for ROI analysis\n• Say 'compare' to compare with another city\n• Or ask 'best deal'"
+                return result, "awaiting_further_action", "after_market"
+        
+        elif 'compare' in msg:
+            last_city = st.session_state.get("last_rent_city", None)
+            if last_city:
+                available_cities = generate_available_cities_list(df, last_city)
+                result = f"Which city would you like to compare with **{last_city}**? I have data for: {available_cities}\n\nJust type the city name."
+                return result, "awaiting_comparison_city", "after_rent"
+        
+        elif 'best' in msg or 'deal' in msg or 'cheapest' in msg:
+            city_avg = df.groupby('city')['rent'].mean().sort_values()
+            cheapest = city_avg.index[0]
+            cheapest_price = city_avg.iloc[0]
+            result = f"🏙️ **Best Deal:** 🥇 **{cheapest}** is the most affordable city at **₹{cheapest_price:,.0f}/month**!\n\n💡 Would you like to see investment opportunities in **{cheapest}**? (Say 'yes' or 'no')"
+            st.session_state.last_rent_city = cheapest
+            return result, "awaiting_investment_decision", "after_best_deal"
+        
+        elif msg in ['yes', 'yeah', 'sure', 'yep']:
+            # Continue with more suggestions
+            last_city = st.session_state.get("last_rent_city", None)
+            follow_ups = generate_follow_up(conversation_context, last_city, df)
+            follow_up_text = "\n\n".join([f"• {f}" for f in follow_ups])
+            result = f"Great! Here are some things you can explore:\n\n{follow_up_text}\n\nJust type what interests you!"
+            return result, "awaiting_further_action", conversation_context
+        
         elif msg in ['no', 'nope', 'nah', 'not']:
-            result = "No problem! Let me know if you need help with anything else about real estate."
-            st.session_state.conversation_stage = "normal"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            result = "No problem! Feel free to ask me about rent prices, comparisons, or investment opportunities anytime.\n\nTry: 'Rent in Mumbai' or 'Best deal'"
+            return result, "normal", "normal"
+        
         else:
-            result = "Would you like to know about property upgrades? (Say 'yes' or 'no')"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            # Check if user mentioned another city
+            new_city = smart_city_detection(message, df)
+            if new_city and new_city != st.session_state.get("last_rent_city"):
+                st.session_state.last_rent_city = new_city
+                data = get_city_data(df, new_city)
+                if data:
+                    price_level, level_name, price_color = get_price_level(data['avg_rent'], all_rents)
+                    rent_meter = create_rent_meter(new_city, data['avg_rent'], data['min_rent'], data['max_rent'], data['avg_area'], data['avg_beds'], price_level, price_color)
+                    result = rent_meter + "\n\n💡 **Would you like to compare this city with another?** (Say 'yes' or 'no')"
+                    return result, "awaiting_comparison_decision", "after_rent"
+            
+            # Default: show available options
+            last_city = st.session_state.get("last_rent_city", "Pune")
+            result = f"I can help you with:\n• Compare {last_city} with another city\n• Investment analysis for {last_city}\n• Market outlook\n• Best deals\n\nWhat would you like to explore?"
+            return result, "awaiting_further_action", conversation_context
     
-    # ========== STAGE 4: UPGRADE INFORMATION ==========
-    if conversation_stage == "awaiting_upgrade_info":
-        last_city = st.session_state.get("last_rent_city", None)
-        if 'bedroom' in msg:
-            result = f"🧮 **Adding a bedroom in {last_city}:**\n\n• Cost: ₹5,00,000\n• Rent increase: +10-15%\n• Payback period: 8-10 years\n\n💡 Would you like to know about other upgrades? (Say 'yes' or 'no')"
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
-        elif 'bathroom' in msg:
-            result = f"🧮 **Adding a bathroom in {last_city}:**\n\n• Cost: ₹3,00,000\n• Rent increase: +5-8%\n• Payback period: 10-12 years\n\n💡 Would you like to know about other upgrades? (Say 'yes' or 'no')"
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
-        elif 'furnished' in msg or 'furnish' in msg:
-            result = f"🧮 **Fully furnished in {last_city}:**\n\n• Cost: ₹2,50,000\n• Rent increase: +15-20%\n• Payback period: 3-4 years\n\n💡 This is the best ROI! Would you like to know about other upgrades? (Say 'yes' or 'no')"
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
-        elif 'location' in msg or 'premium' in msg:
-            result = f"⭐ **Premium location in {last_city}:**\n\n• Rent increase: +18-25%\n• Payback period: Immediate\n\n💡 Location is the most important factor! Would you like to know about other upgrades? (Say 'yes' or 'no')"
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
-        else:
-            result = f"I can help with upgrade information for {last_city}. Try asking about:\n• Adding a bedroom\n• Adding a bathroom\n• Fully furnished\n• Premium location"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
-    
-    # ========== STAGE 5: AFTER INVESTMENT DECISION ==========
+    # Stage 4: Investment decision
     if conversation_stage == "awaiting_investment_decision":
         if msg in ['yes', 'yeah', 'sure', 'yep']:
             last_city = st.session_state.get("last_rent_city", None)
             if last_city:
-                result = get_city_investment_analysis(df, last_city)
-                st.session_state.conversation_stage = "awaiting_further_action"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                result = get_city_investment_analysis(df, last_city) + "\n\n💡 **Want to explore more?**\n• Say 'upgrade' to see renovation ROI\n• Say 'compare' to compare with another city\n• Or ask 'market' for trends"
+                return result, "awaiting_further_action", "after_investment"
         elif msg in ['no', 'nope', 'nah', 'not']:
-            result = "Okay! Is there anything else I can help you with regarding real estate?"
-            st.session_state.conversation_stage = "normal"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            result = "Okay! Would you like to compare cities or check market outlook? (Say 'compare' or 'market')"
+            return result, "awaiting_further_action", "normal"
         else:
             last_city = st.session_state.get("last_rent_city", "Pune")
             result = f"Would you like to know about investment opportunities in **{last_city}**? (Say 'yes' or 'no')"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            return result, "awaiting_investment_decision", conversation_context
     
-    # ========== EXTRACT ALL CITIES FROM QUERY ==========
+    # ========== INITIAL QUERIES ==========
+    
+    # Extract all cities from query
     mentioned_cities = extract_all_cities(msg, cities_list)
     
-    # ========== CHECK FOR COMPARISON (2+ cities mentioned) ==========
+    # Check for direct comparison (2+ cities mentioned)
     if len(mentioned_cities) >= 2:
         city1, city2 = mentioned_cities[0], mentioned_cities[1]
         data1 = get_city_data(df, city1)
@@ -439,30 +470,24 @@ def generate_response(message, df, conversation_stage):
         if data1 and data2:
             rent1 = data1['avg_rent']
             rent2 = data2['avg_rent']
-            result = get_city_comparison_text(city1, city2, rent1, rent2)
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            result = get_city_comparison_text(city1, city2, rent1, rent2) + "\n\n💡 **What would you like to do next?**\n• Say 'upgrade' to see renovation ROI\n• Say 'investment' for financial analysis\n• Or ask about another city"
+            st.session_state.last_rent_city = city1
+            return result, "awaiting_further_action", "after_comparison"
     
-    # ========== INVESTMENT ANALYSIS ==========
+    # Investment analysis
     if any(word in msg for word in ['invest', 'investment']):
         for city in cities_list:
             if city.lower() in msg:
-                result = get_city_investment_analysis(df, city)
-                st.session_state.conversation_stage = "awaiting_further_action"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                result = get_city_investment_analysis(df, city) + "\n\n💡 **Explore more:**\n• Say 'upgrade' to see renovation ROI\n• Say 'compare' to compare with another city\n• Or ask 'market' for trends"
+                st.session_state.last_rent_city = city
+                return result, "awaiting_further_action", "after_investment"
         city = smart_city_detection(message, df)
         if city:
-            result = get_city_investment_analysis(df, city)
-            st.session_state.conversation_stage = "awaiting_further_action"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            result = get_city_investment_analysis(df, city) + "\n\n💡 **Explore more:**\n• Say 'upgrade' to see renovation ROI\n• Say 'compare' to compare with another city"
+            st.session_state.last_rent_city = city
+            return result, "awaiting_further_action", "after_investment"
     
-    # ========== RENT PRICE WITH METER AND ASK FOR COMPARISON ==========
+    # Rent price with meter
     if any(word in msg for word in ['rent', 'price']):
         city = smart_city_detection(message, df)
         if city:
@@ -470,6 +495,7 @@ def generate_response(message, df, conversation_stage):
             if data:
                 st.session_state.last_rent_city = city
                 st.session_state.conversation_stage = "awaiting_comparison_decision"
+                st.session_state.conversation_context = "after_rent"
                 
                 price_level, level_name, price_color = get_price_level(data['avg_rent'], all_rents)
                 rent_meter = create_rent_meter(
@@ -483,78 +509,61 @@ def generate_response(message, df, conversation_stage):
                     price_color
                 )
                 
-                # The question text that will appear AFTER the rent meter
-                follow_up_text = f"\n\n💡 **Would you like to compare {city} with another city?**\n*(Say 'yes' to compare or 'no' to see investment options)*"
+                follow_up_text = f"\n\n💡 **Would you like to compare {city} with another city?**\n*(Say 'yes' to compare, 'no' for investment options, or type a city name directly)*"
                 
-                # Combine rent meter AND the follow-up question
-                combined_response = rent_meter + follow_up_text
-                
-                st.session_state.last_response = combined_response
-                st.session_state.last_query = message
-                return combined_response, None
+                return rent_meter + follow_up_text, "awaiting_comparison_decision", "after_rent"
         result = f"Which city's rent would you like to see? Try 'Rent in Mumbai' or 'Rent in Pune'"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        return result, "normal", "normal"
     
-    # ========== BEST DEAL ==========
+    # Best deal
     if any(word in msg for word in ['best', 'cheapest', 'deal']):
         city_avg = df.groupby('city')['rent'].mean().sort_values()
         cheapest = city_avg.index[0]
         cheapest_price = city_avg.iloc[0]
         
         st.session_state.last_rent_city = cheapest
-        st.session_state.conversation_stage = "awaiting_investment_decision"
-        
         result = f"🏙️ **Best Deal:** 🥇 **{cheapest}** is the most affordable city at **₹{cheapest_price:,.0f}/month**!\n\n💡 Would you like to see investment opportunities in **{cheapest}**? (Say 'yes' or 'no')"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        return result, "awaiting_investment_decision", "after_best_deal"
     
-    # ========== MARKET OUTLOOK ==========
+    # Market outlook
     if any(word in msg for word in ['outlook', 'market']):
         for city in cities_list:
             if city.lower() in msg:
-                result = get_city_market_outlook(df, city)
-                st.session_state.conversation_stage = "normal"
-                st.session_state.last_response = result
-                st.session_state.last_query = message
-                return result, None
+                result = get_city_market_outlook(df, city) + "\n\n💡 **Want to continue?**\n• Say 'investment' for ROI analysis\n• Say 'compare' to compare with another city"
+                st.session_state.last_rent_city = city
+                return result, "awaiting_further_action", "after_market"
         city = smart_city_detection(message, df)
         if city:
-            result = get_city_market_outlook(df, city)
-            st.session_state.conversation_stage = "normal"
-            st.session_state.last_response = result
-            st.session_state.last_query = message
-            return result, None
+            result = get_city_market_outlook(df, city) + "\n\n💡 **Want to continue?**\n• Say 'investment' for ROI analysis\n• Say 'compare' to compare with another city"
+            st.session_state.last_rent_city = city
+            return result, "awaiting_further_action", "after_market"
         result = get_overall_market_outlook(df)
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        return result, "normal", "normal"
     
-    # ========== NEGOTIATION ==========
+    # Negotiation tips
     if any(word in msg for word in ['negotiate', 'offer']):
         result = f"""🤝 **Negotiation Tips:**
 
 {get_seasonal_insight()}
 • Start 8-12% below market rate
 • Mention how long property has been listed
-• Ask for small repairs or free parking"""
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+• Ask for small repairs or free parking
+
+💡 Would you like to know about current market trends? (Say 'market')"""
+        return result, "awaiting_further_action", "after_negotiation"
     
-    # ========== MY STATS ==========
+    # My stats
     if 'my stats' in msg:
-        result = get_user_personalization()
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        result = get_user_personalization() + "\n\n💡 Want to make more predictions? Use the sidebar to predict rent!"
+        return result, "normal", "normal"
     
-    # ========== HELP ==========
+    # Upgrade/What-if
+    if any(word in msg for word in ['what if', 'upgrade', 'add']):
+        last_city = st.session_state.get("last_rent_city", "Pune")
+        result = f"🧮 **Upgrade ROI Calculator for {last_city}:**\n\n• 🛏️ Adding a bedroom: +10-15% rent (8-10 years payback)\n• 🚽 Adding a bathroom: +5-8% rent (10-12 years payback)\n• 🪑 Fully furnished: +15-20% rent (3-4 years payback)\n• ⭐ Premium location: +18-25% rent (immediate)\n\n💡 **What would you like to know next?**\n• Say 'investment' for financial analysis\n• Say 'compare' to compare with another city"
+        return result, "awaiting_further_action", "after_upgrade"
+    
+    # Help
     if msg == 'help':
         result = """💡 **Available Commands:**
 • "Rent in Mumbai" - See rent with visual meter
@@ -562,13 +571,13 @@ def generate_response(message, df, conversation_stage):
 • "Investment in Pune" - Investment analysis
 • "Best deal" - Find cheapest city
 • "Market outlook" - Current trends
-• "Negotiation tips" - How to negotiate"""
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+• "Upgrade" - Renovation ROI calculator
+• "Negotiation tips" - How to negotiate
+
+💡 The chatbot will keep suggesting follow-up questions - just type 'yes' or your choice!"""
+        return result, "normal", "normal"
     
-    # ========== GREETING ==========
+    # Greeting
     if any(x in msg for x in ['hi', 'hello', 'hey']):
         rec = get_personalized_recommendations(df)
         rec_text = f"\n\n{rec}" if rec else ""
@@ -576,32 +585,34 @@ def generate_response(message, df, conversation_stage):
 
 {get_user_personalization()}{rec_text}
 
-Try asking: "Rent in Mumbai", "Compare Mumbai and Pune", or "Investment in Pune"
+💡 **Try these commands:**
+• "Rent in Mumbai" - See rent meter
+• "Compare Mumbai and Pune" - Compare cities
+• "Investment in Pune" - Investment analysis
+• "Best deal" - Find cheapest city
+
+I'll keep suggesting follow-up questions - just say 'yes' or type what interests you!
 Type 'help' for all commands"""
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        return result, "normal", "normal"
     
     if 'thank' in msg:
-        result = "You're welcome! 😊 Happy to help!"
-        st.session_state.conversation_stage = "normal"
-        st.session_state.last_response = result
-        st.session_state.last_query = message
-        return result, None
+        result = "You're welcome! 😊 Happy to help! Is there anything else about real estate you'd like to know?"
+        return result, "awaiting_further_action", "normal"
     
-    # ========== DEFAULT RESPONSE ==========
-    result = f"""💡 Try asking:
-• "Rent in Mumbai"
-• "Compare Mumbai and Pune"
-• "Investment in Pune"
-• "Best deal"
+    # Default response with continuous engagement
+    last_city = st.session_state.get("last_rent_city", "Pune")
+    result = f"""💡 **Here's what I can help with:**
+
+• 📊 Check rent in **{last_city}**
+• ⚖️ Compare **{last_city}** with another city
+• 💰 Investment analysis for **{last_city}**
+• 🏆 Find the best deal city
+• 🛏️ Upgrade ROI calculator
+
+Just type what you're interested in! (e.g., 'compare', 'investment', 'upgrade')
 
 Type 'help' for all commands"""
-    st.session_state.conversation_stage = "normal"
-    st.session_state.last_response = result
-    st.session_state.last_query = message
-    return result, None
+    return result, "awaiting_further_action", "normal"
 
 
 def analyze_sentiment(text):
@@ -638,7 +649,7 @@ def export_chat_history():
 
 
 def floating_chatbot(df):
-    """Natural conversational floating chatbot"""
+    """Natural conversational floating chatbot with continuous flow"""
     
     # Initialize session state
     if "chat_messages" not in st.session_state:
@@ -657,6 +668,9 @@ def floating_chatbot(df):
     
     if "conversation_stage" not in st.session_state:
         st.session_state.conversation_stage = "normal"
+    
+    if "conversation_context" not in st.session_state:
+        st.session_state.conversation_context = "normal"
     
     # CSS for floating button
     st.markdown("""
@@ -741,7 +755,6 @@ def floating_chatbot(df):
             for msg in st.session_state.chat_messages:
                 with st.chat_message(msg["role"]):
                     if msg["role"] == "assistant" and isinstance(msg.get("content"), str) and "<div style" in msg["content"]:
-                        # This is HTML content like rent meter
                         st.markdown(msg["content"], unsafe_allow_html=True)
                     else:
                         st.markdown(msg["content"])
@@ -749,13 +762,14 @@ def floating_chatbot(df):
         # Chat input
         if prompt := st.chat_input("Ask about real estate...", key="chat_input_field"):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            response_text = generate_response(prompt, df, st.session_state.conversation_stage)
-            # response_text can be a tuple, but we're handling it correctly in generate_response
-            if isinstance(response_text, tuple):
-                # This shouldn't happen with the updated generate_response
-                st.session_state.chat_messages.append({"role": "assistant", "content": response_text[0]})
-            else:
-                st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
+            response_text, new_stage, new_context = generate_response(
+                prompt, df, 
+                st.session_state.conversation_stage, 
+                st.session_state.conversation_context
+            )
+            st.session_state.conversation_stage = new_stage
+            st.session_state.conversation_context = new_context
+            st.session_state.chat_messages.append({"role": "assistant", "content": response_text})
             st.rerun()
         
         # Action buttons
@@ -769,6 +783,7 @@ def floating_chatbot(df):
                 st.session_state.last_query = ""
                 st.session_state.last_rent_city = None
                 st.session_state.conversation_stage = "normal"
+                st.session_state.conversation_context = "normal"
                 st.rerun()
         with col2:
             export_chat_history()
